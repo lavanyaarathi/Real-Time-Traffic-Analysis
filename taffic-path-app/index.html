@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real Time Traffic Analysis</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            
+            background-image: url(https://urbanlogiq.com/wp-content/uploads/iot-data-img.png);
+background-size: cover;
+            background-repeat: no-repeat;
+            margin: 0;
+            padding: 0;
+        }
+
+        h3 {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            font-weight: bolder;
+            color: whitesmoke;
+            padding: 20px;
+        }
+
+        form {
+            background-color: whitesmoke;
+            border-radius: 8px;
+            padding: 60px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            width: 20%;
+            margin: 20px auto;
+        }
+
+        input, button {
+            margin: 10px 0;
+            width: calc(100% - 40px);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid black;
+            font-size: 14px;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #map {
+            width: 100%;
+            height: 100vh; /* Full viewport height */
+            overflow: auto; /* Allow scrolling */
+            position: relative;
+        }
+
+        #map svg {
+            width: 100%;
+            height: 100%; /* Fill the available space */
+            position: absolute; /* Position on top of the map background */
+            top: 0;
+            left: 0;
+            background-image: url('https://www.shutterstock.com/image-vector/city-map-navigation-gps-navigator-600nw-2449090905.jpg'); /* Map background image */
+            background-size: cover; /* Ensure the background image covers the entire area */
+            background-position: center center; /* Center the background image */
+        }
+
+        .node circle {
+            fill: #6aa6a0;
+            stroke: #333;
+            stroke-width: 1.5px;
+        }
+
+        .link {
+            stroke-width: 6;
+            stroke: rgba(0, 0, 0, 0.2); /* Semi-transparent road */
+            visibility: hidden; /* Initially hide all the links */
+        }
+
+        .link.path {
+            stroke: green;
+            stroke-width: 6;
+            visibility: visible; /* Make the path visible */
+        }
+
+        text {
+            font-size: 12px;
+            fill: #333;
+        }
+
+        .arrow {
+            fill: black;
+        }
+        .text{
+            font-weight: bold;
+            font-family: 'Times New Roman', Times, serif;
+        }
+    </style>
+</head>
+<body>
+    <h3 class="text">Real Time Traffic Analysis</h3>
+    <p style="text-align: center;
+          color:whitesmoke;">Enter the names of the source and destination places to see the shortest path:</p>
+    <form id="pathForm">
+        Source: <input type="text" id="source" required>
+        Destination: <input type="text" id="destination" required>
+        <button type="submit">Find Shortest Path</button>
+    </form>
+
+    <div id="map"></div>
+
+    <script>
+        const width = window.innerWidth;
+        const height = window.innerHeight - 100; // Adjust for form height
+
+        const numNodes = 250;
+        const placeTypes = ["Hospital", "School", "Residential", "Mall", "Office", "Park", "Library"];
+
+        const icons = {
+            "Hospital": "https://img.icons8.com/ios/50/000000/hospital-room.png",
+            "School": "https://img.icons8.com/ios/50/000000/school.png",
+            "Residential": "https://img.icons8.com/ios/50/000000/home.png",
+            "Mall": "https://img.icons8.com/ios/50/000000/shopping-cart.png",
+            "Office": "data:image/png;base64,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",
+            "Park": "https://cdn-icons-png.flaticon.com/512/1466/1466383.png",
+            "Library": "https://img.icons8.com/ios/50/000000/library.png"
+        };
+
+        // Generate random nodes with random positions
+        const nodes = Array.from({length: numNodes}, (_, i) => ({
+            id: i,
+            x: Math.random() * width,
+            y: Math.random() * height,
+            label: placeTypes[i % placeTypes.length] + " " + (Math.floor(i / placeTypes.length) + 1)
+        }));
+
+        // Generate random links between nodes
+        const links = [];
+        for (let i = 0; i < numNodes; i++) {
+            const target = Math.floor(Math.random() * numNodes);
+            if (i !== target) {
+                links.push({ source: i, target: target });
+            }
+        }
+
+        const svg = d3.select("#map").append("svg")
+            .attr("width", "100%")
+            .attr("height", window.innerHeight - 100);  // Adjust based on the available height
+
+        // Draw links (roads)
+        const link = svg.append("g")
+            .attr("class", "links")
+            .selectAll("line")
+            .data(links)
+            .enter().append("line")
+            .attr("class", "link")
+            .attr("x1", d => nodes[d.source].x)
+            .attr("y1", d => nodes[d.source].y)
+            .attr("x2", d => nodes[d.target].x)
+            .attr("y2", d => nodes[d.target].y);
+
+        // Draw nodes with icons
+        const node = svg.append("g")
+            .attr("class", "nodes")
+            .selectAll("g")
+            .data(nodes)
+            .enter().append("g")
+            .attr("class", "node")
+            .attr("transform", d => `translate(${d.x},${d.y})`);
+
+        node.append("image")
+            .attr("x", -15)
+            .attr("y", -15)
+            .attr("width", 30)
+            .attr("height", 30)
+            .attr("xlink:href", d => icons[d.label.split(' ')[0]]); // Use corresponding icon for the place type
+
+        node.append("title")
+            .text(d => d.label);
+
+        // Shortest path calculation using Dijkstra's algorithm
+        function findShortestPath(source, destination) {
+            const distances = Array(numNodes).fill(Infinity);
+            const previous = Array(numNodes).fill(null);
+            const visited = new Set();
+
+            distances[source] = 0;
+
+            while (visited.size < numNodes) {
+                let closestNode = -1;
+                let closestDist = Infinity;
+
+                for (let i = 0; i < numNodes; i++) {
+                    if (!visited.has(i) && distances[i] < closestDist) {
+                        closestDist = distances[i];
+                        closestNode = i;
+                    }
+                }
+
+                if (closestNode === -1 || closestNode === destination) break;
+
+                visited.add(closestNode);
+
+                links.forEach(link => {
+                    if (link.source === closestNode || link.target === closestNode) {
+                        const neighbor = link.source === closestNode ? link.target : link.source;
+                        const alt = distances[closestNode] + 1; // Assume distance 1 for simplicity
+                        if (alt < distances[neighbor]) {
+                            distances[neighbor] = alt;
+                            previous[neighbor] = closestNode;
+                        }
+                    }
+                });
+            }
+
+            const path = [];
+            let current = destination;
+            while (current !== null) {
+                path.unshift(current);
+                current = previous[current];
+            }
+            return path.length > 1 ? path : null;
+        }
+
+        // Draw arrows on the highlighted path
+        function drawArrows(path) {
+            const pathData = [];
+            for (let i = 0; i < path.length - 1; i++) {
+                const source = nodes[path[i]];
+                const target = nodes[path[i + 1]];
+                const midX = (source.x + target.x) / 2;
+                const midY = (source.y + target.y) / 2;
+
+                pathData.push({ x: midX, y: midY });
+            }
+
+            svg.selectAll(".arrow")
+                .data(pathData)
+                .enter().append("path")
+                .attr("class", "arrow")
+                .attr("d", "M0,-5 L10,0 L0,5")
+                .attr("transform", d => `translate(${d.x},${d.y}) rotate(${Math.atan2(d.y - pathData[0].y, d.x - pathData[0].x) * 180 / Math.PI})`);
+        }
+
+        // Handle form submission
+        document.getElementById("pathForm").addEventListener("submit", event => {
+            event.preventDefault();
+
+            // Get source and destination input
+            const sourceLabel = document.getElementById("source").value;
+            const destinationLabel = document.getElementById("destination").value;
+            const sourceNode = nodes.find(node => node.label === sourceLabel);
+            const destinationNode = nodes.find(node => node.label === destinationLabel);
+
+            if (!sourceNode || !destinationNode) {
+                alert("Invalid source or destination.");
+                return;
+            }
+
+            // Find the shortest path
+            const path = findShortestPath(sourceNode.id, destinationNode.id);
+
+            // Reset link visibility
+            link.style("visibility", "hidden");
+
+            // Highlight shortest path if found
+            if (path) {
+                for (let i = 0; i < path.length - 1; i++) {
+                    const source = path[i];
+                    const target = path[i + 1];
+                    const linkToHighlight = links.find(l => 
+                        (l.source === source && l.target === target) ||
+                        (l.source === target && l.target === source)
+                    );
+                    if (linkToHighlight) {
+                        d3.select(link.nodes()[links.indexOf(linkToHighlight)]).style("visibility", "visible");
+                    }
+                }
+
+                // Draw arrows on the highlighted path
+                drawArrows(path);
+            } else {
+                alert("No path found.");
+            }
+        });
+    </script>
+</body>
+</html>
